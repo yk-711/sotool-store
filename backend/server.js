@@ -9,7 +9,7 @@ import "dotenv/config";
 import { query } from "./db.js";
 import {
   register, login, logout, me,
-  forgotPassword, resetPassword, authenticate
+  forgotPassword, resetPassword, authenticate, googleStart, googleCallback
 } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -46,6 +46,8 @@ app.get("/api/health", async (_req, res) => {
   }
 });
 
+app.get("/api/auth/google", googleStart);
+app.get("/api/auth/google/callback", googleCallback);
 app.post("/api/auth/register", authLimiter, register);
 app.post("/api/auth/login", authLimiter, login);
 app.post("/api/auth/logout", logout);

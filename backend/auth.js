@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "./db.js";
+import { OAuth2Client } from "google-auth-library";
 
 const PASSWORD_ROUNDS = 12;
 
@@ -228,5 +229,125 @@ export function authenticate(req, res, next) {
     }).catch(next);
   } catch {
     return res.status(401).json({ message: "جلسة الدخول غير صالحة أو منتهية." });
+  }
+}
+
+
+function googleClient() {
+  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL } = process.env;
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_CALLBACK_URL) return null;
+  return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL);
+}
+
+function sessionCookie(res, user, remember = true) {
+  const expiresIn = remember ? "30d" : (process.env.JWT_EXPIRES_IN || "7d");
+  const token = jwt.sign(
+    { sub: user.id, type: "session" },
+    process.env.JWT_SECRET,
+    { expiresIn }
+  );
+  res.cookie("auth_token", token, {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE === "true",
+    sameSite: "lax",
+    maxAge: remember ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000,
+    path: "/"
+  });
+}
+
+export function googleStart(req, res) {
+  const client = googleClient();
+  if (!client) {
+    return res.status(503).send("تسجيل الدخول عبر Google غير مفعّل بعد. أضف إعدادات Google OAuth في Render.");
+  }
+
+  const state = randomBytes(32).toString("hex");
+  res.cookie("google_oauth_state", state, {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE === "true",
+    sameSite: "lax",
+    maxAge: 10 * 60 * 1000,
+    path: "/"
+  });
+
+  const url = client.generateAuthUrl({
+    access_type: "online",
+    scope: ["openid", "email", "profile"],
+    state,
+    prompt: "select_account"
+  });
+  res.redirect(url);
+}
+
+export async function googleCallback(req, res) {
+  const client = googleClient();
+  const stateCookie = req.cookies.google_oauth_state;
+  const { code, state, error } = req.query;
+
+  res.clearCookie("google_oauth_state", {
+    httpOnly: true,
+    secure: process.env.COOKIE_SECURE === "true",
+    sameSite: "lax",
+    path: "/"
+  });
+
+  if (!client) return res.redirect("/login.html?error=google_not_configured");
+  if (error) return res.redirect("/login.html?error=google_cancelled");
+  if (!code || !state || !stateCookie || state !== stateCookie) {
+    return res.redirect("/login.html?error=google_state");
+  }
+
+  try {
+    const { tokens } = await client.getToken(code);
+    if (!tokens.id_token) throw new Error("Google did not return an ID token.");
+
+    const ticket = await client.verifyIdToken({
+      idToken: tokens.id_token,
+      audience: process.env.GOOGLE_CLIENT_ID
+    });
+    const payload = ticket.getPayload();
+
+    const googleId = payload?.sub;
+    const email = normalizeEmail(payload?.email);
+    const name = String(payload?.name || payload?.given_name || "مستخدم Google").trim().slice(0, 100);
+    const emailVerified = payload?.email_verified === true;
+
+    if (!googleId || !email || !emailVerified) {
+      throw new Error("Google account email could not be verified.");
+    }
+
+    let result = await query(
+      `SELECT id, name, email, password_hash, provider, provider_id, email_verified, created_at
+       FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1`,
+      [email]
+    );
+
+    let user;
+    if (result.rowCount) {
+      user = result.rows[0];
+      await query(
+        `UPDATE users
+         SET provider='google', provider_id=$1, email_verified=$2, updated_at=NOW()
+         WHERE id=$3`,
+        [googleId, emailVerified, user.id]
+      );
+      user.provider = "google";
+      user.provider_id = googleId;
+      user.email_verified = emailVerified;
+    } else {
+      const created = await query(
+        `INSERT INTO users (name,email,password_hash,provider,provider_id,email_verified)
+         VALUES ($1,$2,NULL,'google',$3,$4)
+         RETURNING id,name,email,password_hash,provider,provider_id,email_verified,created_at`,
+        [name, email, googleId, emailVerified]
+      );
+      user = created.rows[0];
+    }
+
+    sessionCookie(res, user, true);
+    return res.redirect("/account.html");
+  } catch (error) {
+    console.error("Google OAuth error:", error);
+    return res.redirect("/login.html?error=google_failed");
   }
 }
