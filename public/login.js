@@ -1,4 +1,4 @@
-const API_BASE = "https://hgrlgkhigmomhcxpnerj.supabase.co/auth/v1/callback"; // إذا كان الـAPI على نطاق مختلف: "https://api.example.com"
+const API_BASE = ""; // الـAPI يعمل من نفس نطاق الموقع على Render
 
 const loginBox = document.getElementById("loginBox");
 const registerBox = document.getElementById("registerBox");
@@ -137,7 +137,12 @@ async function forgotPassword() {
 
 document.getElementById("forgotButton").addEventListener("click", forgotPassword);
 
-document.getElementById("googleRegisterButton").addEventListener("click", googleLogin);
+const googleButton = document.getElementById("googleLoginButton");
+if (googleButton) {
+  googleButton.addEventListener("click", () => {
+    window.location.href = "/api/auth/google";
+  });
+}
 
 function showMessage(id, text, type = "") {
   const el = document.getElementById(id);
