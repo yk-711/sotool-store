@@ -1,4 +1,30 @@
 (() => {
+  document.addEventListener("DOMContentLoaded", function () {
+  const accountBtn = document.getElementById("accountBtn");
+
+  if (accountBtn) {
+    accountBtn.addEventListener("click", async function (event) {
+      event.preventDefault(); // منع التحويل المباشر للاختبار أولاً
+
+      try {
+        // التحقق من الجلسة الحالية من الخادم
+        const response = await fetch('/api/auth/me', { credentials: 'include' });
+        
+        if (response.ok) {
+          // إذا كان مسجلاً للدخول -> تحويل لصفحة الحساب
+          window.location.href = '/account.html';
+        } else {
+          // إذا لم يكن مسجلاً -> تحويل لصفحة تسجيل الدخول
+          window.location.href = '/login.html';
+        }
+      } catch (error) {
+        // في حال وجود خطأ بالشبكة -> تحويل لصفحة الدخول كخيار آمن
+        window.location.href = '/login.html';
+      }
+    });
+  }
+});
+
   const currencyRates = { sar: 1, yer: 65, usd: 0.2667 };
   const currencyLabels = { sar: "\u0631.\u0633", yer: "\u0631.\u064A", usd: "$" };
   let activeCurrency = localStorage.getItem("sotool-currency") || "sar";
