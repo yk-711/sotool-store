@@ -1,13 +1,9 @@
 
 /* ===== LUXURY BLACK & GOLD IDENTITY ===== */
 body {
-  background: #070707 url("../assets/login-background.jpg") center top / cover fixed no-repeat;
+  background:  url("../assets/login-background.jpg") center top / cover fixed no-repeat;
   
-}
-body::before {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: -1;
-  background: linear-gradient(180deg, rgba(7,7,7,.30), rgba(7,7,7,.84));
-}
+
 :root {
   --primary: #d9b45c;
   --secondary: #f2d991;
