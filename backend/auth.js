@@ -3,7 +3,7 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "./db.js";
 import { OAuth2Client } from "google-auth-library";
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 
 const PASSWORD_ROUNDS = 12;
 
@@ -153,23 +153,32 @@ export async function forgotPassword(req, res, next) {
 
     const frontendUrl = String(process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
     const resetUrl = `${frontendUrl}/reset-password.html?token=${rawToken}`;
-    const mailFrom = process.env.MAIL_FROM || process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-    if (process.env.RESEND_API_KEY) {
-      const resend = new Resend(process.env.RESEND_API_KEY);
-      const { error } = await resend.emails.send({
-        from: mailFrom,
-        to: [email],
+    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST,
+        port: Number(process.env.SMTP_PORT || 587),
+        secure: false,
+        auth: {
+          user: process.env.SMTP_USER,
+          pass: process.env.SMTP_PASS
+        }
+      });
+
+      const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
+
+      await transporter.sendMail({
+        from: `"متجر سطول" <${mailFrom}>`,
+        to: email,
         subject: "إعادة تعيين كلمة المرور | متجر سطول",
         html: `
-          <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:20px;border-radius:10px;border:1px solid #d9b45c;">
+          <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
             <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
-            <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة. الرابط صالح لمدة 30 دقيقة.</p>
-            <p><a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
+            <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة لحسابك في متجر سطول. الرابط صالح لمدة 30 دقيقة.</p>
+            <p><a href="${resetUrl}" style="display:inline-block;padding:12px 22px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
           </div>
         `
       });
-      if (error) console.error("Resend delivery failed:", error);
     } else if (process.env.NODE_ENV !== "production") {
       console.log("DEV password reset URL:", resetUrl);
     }
@@ -208,7 +217,7 @@ export async function resetPassword(req, res) {
     [passwordHash, result.rows[0].user_id]);
 
   await query("UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1",
-    [passwordHash, result.rows[0].id]);
+    [result.rows[0].id]);
 
   return res.json({ message: "تم تغيير كلمة المرور بنجاح." });
 }
