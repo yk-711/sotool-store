@@ -3,7 +3,6 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "./db.js";
 import { OAuth2Client } from "google-auth-library";
-import nodemailer from "nodemailer";
 
 const PASSWORD_ROUNDS = 12;
 
@@ -154,36 +153,35 @@ export async function forgotPassword(req, res, next) {
     const frontendUrl = String(process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
     const resetUrl = `${frontendUrl}/reset-password.html?token=${rawToken}`;
 
-    if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-      const port = Number(process.env.SMTP_PORT || 465);
+    const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
+    const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
 
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST,
-        port: port,
-        secure: port === 465,
-        auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS
+    if (apiKey) {
+      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+        method: "POST",
+        headers: {
+          "accept": "application/json",
+          "api-key": apiKey,
+          "content-type": "application/json"
         },
-        tls: {
-          rejectUnauthorized: false
-        }
+        body: JSON.stringify({
+          sender: { name: "متجر أثير", email: mailFrom },
+          to: [{ email: email }],
+          subject: "إعادة تعيين كلمة المرور | متجر أثير",
+          htmlContent: `
+            <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
+              <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
+              <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة لحسابك. الرابط صالح لمدة 30 دقيقة.</p>
+              <p><a href="${resetUrl}" style="display:inline-block;padding:12px 22px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
+            </div>
+          `
+        })
       });
 
-      const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
-
-      await transporter.sendMail({
-        from: `"متجر سطول" <${mailFrom}>`,
-        to: email,
-        subject: "إعادة تعيين كلمة المرور | متجر سطول",
-        html: `
-          <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
-            <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
-            <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة لحسابك في متجر سطول. الرابط صالح لمدة 30 دقيقة.</p>
-            <p><a href="${resetUrl}" style="display:inline-block;padding:12px 22px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
-          </div>
-        `
-      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error("Brevo API Error:", errorData);
+      }
     } else if (process.env.NODE_ENV !== "production") {
       console.log("DEV password reset URL:", resetUrl);
     }
@@ -273,7 +271,7 @@ function sessionCookie(res, user, remember = true) {
 export function googleStart(req, res) {
   const client = googleClient();
   if (!client) {
-    return res.status(503).send("تسجيل الدخول عبر Google غير مفعّل بعد. أضف إعدادات Google OAuth في Render.");
+    return res.status(503).send("تسجيل الدخول عبر Google غير مفعّل بعد.");
   }
 
   const state = randomBytes(32).toString("hex");
