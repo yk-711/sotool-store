@@ -155,13 +155,18 @@ export async function forgotPassword(req, res, next) {
     const resetUrl = `${frontendUrl}/reset-password.html?token=${rawToken}`;
 
     if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+      const port = Number(process.env.SMTP_PORT || 465);
+
       const transporter = nodemailer.createTransport({
         host: process.env.SMTP_HOST,
-        port: Number(process.env.SMTP_PORT || 587),
-        secure: false,
+        port: port,
+        secure: port === 465,
         auth: {
           user: process.env.SMTP_USER,
           pass: process.env.SMTP_PASS
+        },
+        tls: {
+          rejectUnauthorized: false
         }
       });
 
