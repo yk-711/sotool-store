@@ -155,6 +155,7 @@ export async function forgotPassword(req, res, next) {
 
     const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
     const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
+    const senderName = process.env.SENDER_NAME || process.env.MAIL_FROM_NAME || "متجر أثير";
 
     if (apiKey) {
       const response = await fetch("https://api.brevo.com/v3/smtp/email", {
@@ -165,9 +166,9 @@ export async function forgotPassword(req, res, next) {
           "content-type": "application/json"
         },
         body: JSON.stringify({
-          sender: { name: "متجر أثير", email: mailFrom },
+          sender: { name: senderName, email: mailFrom },
           to: [{ email: email }],
-          subject: "إعادة تعيين كلمة المرور | متجر أثير",
+          subject: `إعادة تعيين كلمة المرور | ${senderName}`,
           htmlContent: `
             <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
               <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
