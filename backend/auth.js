@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "./db.js";
 import { OAuth2Client } from "google-auth-library";
+import { Resend } from "resend";
 
 const PASSWORD_ROUNDS = 12;
 
@@ -152,22 +153,23 @@ export async function forgotPassword(req, res, next) {
 
     const frontendUrl = String(process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
     const resetUrl = `${frontendUrl}/reset-password.html?token=${rawToken}`;
+    const mailFrom = process.env.MAIL_FROM || process.env.EMAIL_FROM || "onboarding@resend.dev";
 
-    if (process.env.RESEND_API_KEY && process.env.MAIL_FROM) {
-      const response = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({
-          from: process.env.MAIL_FROM,
-          to: [email],
-          subject: "إعادة تعيين كلمة المرور | متجر سطول",
-          html: `<div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8"><h2>إعادة تعيين كلمة المرور</h2><p>اضغطي على الزر لتعيين كلمة مرور جديدة. الرابط صالح لمدة 30 دقيقة.</p><p><a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px">تعيين كلمة المرور</a></p></div>`
-        })
+    if (process.env.RESEND_API_KEY) {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const { error } = await resend.emails.send({
+        from: mailFrom,
+        to: [email],
+        subject: "إعادة تعيين كلمة المرور | متجر سطول",
+        html: `
+          <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:20px;border-radius:10px;border:1px solid #d9b45c;">
+            <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
+            <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة. الرابط صالح لمدة 30 دقيقة.</p>
+            <p><a href="${resetUrl}" style="display:inline-block;padding:12px 20px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
+          </div>
+        `
       });
-      if (!response.ok) console.warn("Resend recovery request failed:", await response.text());
+      if (error) console.error("Resend delivery failed:", error);
     } else if (process.env.NODE_ENV !== "production") {
       console.log("DEV password reset URL:", resetUrl);
     }
@@ -206,7 +208,7 @@ export async function resetPassword(req, res) {
     [passwordHash, result.rows[0].user_id]);
 
   await query("UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1",
-    [result.rows[0].id]);
+    [passwordHash, result.rows[0].id]);
 
   return res.json({ message: "تم تغيير كلمة المرور بنجاح." });
 }
@@ -231,7 +233,6 @@ export function authenticate(req, res, next) {
     return res.status(401).json({ message: "جلسة الدخول غير صالحة أو منتهية." });
   }
 }
-
 
 function googleClient() {
   const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL } = process.env;
