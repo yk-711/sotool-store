@@ -29,9 +29,11 @@ export async function register(req, res) {
   if (cleanName.length < 2 || cleanName.length > 100) {
     return res.status(400).json({ message: "الاسم غير صالح." });
   }
+
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(cleanEmail)) {
     return res.status(400).json({ message: "البريد الإلكتروني غير صالح." });
   }
+
   if (typeof password !== "string" || password.length < 8 || password.length > 128) {
     return res.status(400).json({ message: "كلمة المرور يجب أن تكون بين 8 و128 حرفاً." });
   }
@@ -115,18 +117,24 @@ export async function logout(req, res) {
     sameSite: "lax",
     path: "/"
   });
+
   return res.json({ message: "تم تسجيل الخروج." });
 }
 
 export async function me(req, res) {
-  if (!req.user) return res.status(401).json({ message: "غير مسجل الدخول." });
+  if (!req.user) {
+    return res.status(401).json({ message: "غير مسجل الدخول." });
+  }
+
   return res.json({ user: publicUser(req.user) });
 }
 
-const genericRecoveryMessage = "إذا كان البريد مرتبطاً بحساب، فستصلك تعليمات الاستعادة.";
+const genericRecoveryMessage =
+  "إذا كان البريد مرتبطاً بحساب، فستصلك تعليمات الاستعادة.";
 
 export async function forgotPassword(req, res, next) {
   const email = normalizeEmail(req.body.email);
+
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return res.json({ message: genericRecoveryMessage });
   }
@@ -136,48 +144,76 @@ export async function forgotPassword(req, res, next) {
       "SELECT id, email FROM users WHERE LOWER(email) = LOWER($1) LIMIT 1",
       [email]
     );
-    if (!result.rowCount) return res.json({ message: genericRecoveryMessage });
+
+    if (!result.rowCount) {
+      return res.json({ message: genericRecoveryMessage });
+    }
 
     const rawToken = randomBytes(32).toString("hex");
     const tokenHash = createHash("sha256").update(rawToken).digest("hex");
+
     await query(
-      `DELETE FROM password_reset_tokens WHERE user_id=$1 AND (used_at IS NOT NULL OR expires_at <= NOW())`,
+      `DELETE FROM password_reset_tokens
+       WHERE user_id=$1
+       AND (used_at IS NOT NULL OR expires_at <= NOW())`,
       [result.rows[0].id]
     );
+
     await query(
       `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
        VALUES ($1, $2, NOW() + INTERVAL '30 minutes')`,
       [result.rows[0].id, tokenHash]
     );
 
-    const frontendUrl = String(process.env.FRONTEND_URL || "http://localhost:3000").replace(/\/$/, "");
-    const resetUrl = `${frontendUrl}/reset-password.html?token=${rawToken}`;
+    const frontendUrl = String(
+      process.env.FRONTEND_URL || "http://localhost:3000"
+    ).replace(/\/$/, "");
+
+    const resetUrl =
+      `${frontendUrl}/reset-password.html?token=${rawToken}`;
 
     const apiKey = process.env.BREVO_API_KEY || process.env.SMTP_PASS;
     const mailFrom = process.env.MAIL_FROM || process.env.SMTP_USER;
-    const senderName = process.env.SENDER_NAME || process.env.MAIL_FROM_NAME || "متجر أثير";
+    const senderName =
+      process.env.SENDER_NAME ||
+      process.env.MAIL_FROM_NAME ||
+      "متجر أثير";
 
     if (apiKey) {
-      const response = await fetch("https://api.brevo.com/v3/smtp/email", {
-        method: "POST",
-        headers: {
-          "accept": "application/json",
-          "api-key": apiKey,
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          sender: { name: senderName, email: mailFrom },
-          to: [{ email: email }],
-          subject: `إعادة تعيين كلمة المرور | ${senderName}`,
-          htmlContent: `
-            <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
-              <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
-              <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة لحسابك. الرابط صالح لمدة 30 دقيقة.</p>
-              <p><a href="${resetUrl}" style="display:inline-block;padding:12px 22px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">تعيين كلمة المرور</a></p>
-            </div>
-          `
-        })
-      });
+      const response = await fetch(
+        "https://api.brevo.com/v3/smtp/email",
+        {
+          method: "POST",
+          headers: {
+            "accept": "application/json",
+            "api-key": apiKey,
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            sender: {
+              name: senderName,
+              email: mailFrom
+            },
+            to: [
+              {
+                email: email
+              }
+            ],
+            subject: `إعادة تعيين كلمة المرور | ${senderName}`,
+            htmlContent: `
+              <div dir="rtl" style="font-family:Arial,sans-serif;line-height:1.8;background:#070707;color:#fff;padding:25px;border-radius:12px;border:1px solid #d9b45c;">
+                <h2 style="color:#d9b45c;">إعادة تعيين كلمة المرور</h2>
+                <p>أهلاً بك، اضغط على الزر أدناه لتعيين كلمة مرور جديدة لحسابك. الرابط صالح لمدة 30 دقيقة.</p>
+                <p>
+                  <a href="${resetUrl}" style="display:inline-block;padding:12px 22px;background:#d9b45c;color:#080808;text-decoration:none;border-radius:8px;font-weight:bold;">
+                    تعيين كلمة المرور
+                  </a>
+                </p>
+              </div>
+            `
+          })
+        }
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -187,7 +223,9 @@ export async function forgotPassword(req, res, next) {
       console.log("DEV password reset URL:", resetUrl);
     }
 
-    return res.json({ message: genericRecoveryMessage });
+    return res.json({
+      message: genericRecoveryMessage
+    });
   } catch (error) {
     return next(error);
   }
@@ -196,14 +234,23 @@ export async function forgotPassword(req, res, next) {
 export async function resetPassword(req, res) {
   const { token, password } = req.body;
 
-  if (typeof token !== "string" || typeof password !== "string" || password.length < 8) {
-    return res.status(400).json({ message: "بيانات استعادة كلمة المرور غير صالحة." });
+  if (
+    typeof token !== "string" ||
+    typeof password !== "string" ||
+    password.length < 8
+  ) {
+    return res.status(400).json({
+      message: "بيانات استعادة كلمة المرور غير صالحة."
+    });
   }
 
-  const tokenHash = createHash("sha256").update(token).digest("hex");
+  const tokenHash = createHash("sha256")
+    .update(token)
+    .digest("hex");
 
   const result = await query(
-    `SELECT id, user_id FROM password_reset_tokens
+    `SELECT id, user_id
+     FROM password_reset_tokens
      WHERE token_hash = $1
        AND used_at IS NULL
        AND expires_at > NOW()
@@ -212,70 +259,145 @@ export async function resetPassword(req, res) {
   );
 
   if (!result.rowCount) {
-    return res.status(400).json({ message: "الرابط غير صالح أو منتهي الصلاحية." });
+    return res.status(400).json({
+      message: "الرابط غير صالح أو منتهي الصلاحية."
+    });
   }
 
-  const passwordHash = await bcrypt.hash(password, PASSWORD_ROUNDS);
+  const passwordHash = await bcrypt.hash(
+    password,
+    PASSWORD_ROUNDS
+  );
 
-  await query("UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2",
-    [passwordHash, result.rows[0].user_id]);
+  await query(
+    "UPDATE users SET password_hash=$1, updated_at=NOW() WHERE id=$2",
+    [passwordHash, result.rows[0].user_id]
+  );
 
-  await query("UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1",
-    [result.rows[0].id]);
+  await query(
+    "UPDATE password_reset_tokens SET used_at=NOW() WHERE id=$1",
+    [result.rows[0].id]
+  );
 
-  return res.json({ message: "تم تغيير كلمة المرور بنجاح." });
+  return res.json({
+    message: "تم تغيير كلمة المرور بنجاح."
+  });
 }
 
 export function authenticate(req, res, next) {
   try {
     const token = req.cookies.auth_token;
-    if (!token) return res.status(401).json({ message: "غير مسجل الدخول." });
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET);
+    if (!token) {
+      return res.status(401).json({
+        message: "غير مسجل الدخول."
+      });
+    }
+
+    const payload = jwt.verify(
+      token,
+      process.env.JWT_SECRET
+    );
 
     query(
       `SELECT id, name, email, provider, email_verified, created_at
-       FROM users WHERE id=$1 LIMIT 1`,
+       FROM users
+       WHERE id=$1
+       LIMIT 1`,
       [payload.sub]
-    ).then(result => {
-      if (!result.rowCount) return res.status(401).json({ message: "الحساب غير موجود." });
-      req.user = result.rows[0];
-      next();
-    }).catch(next);
+    )
+      .then(result => {
+        if (!result.rowCount) {
+          return res.status(401).json({
+            message: "الحساب غير موجود."
+          });
+        }
+
+        req.user = result.rows[0];
+        next();
+      })
+      .catch(next);
   } catch {
-    return res.status(401).json({ message: "جلسة الدخول غير صالحة أو منتهية." });
+    return res.status(401).json({
+      message: "جلسة الدخول غير صالحة أو منتهية."
+    });
   }
 }
 
 function googleClient() {
-  const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL } = process.env;
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_CALLBACK_URL) return null;
-  return new OAuth2Client(GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_CALLBACK_URL);
+  const {
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_CALLBACK_URL
+  } = process.env;
+
+  if (
+    !GOOGLE_CLIENT_ID ||
+    !GOOGLE_CLIENT_SECRET ||
+    !GOOGLE_CALLBACK_URL
+  ) {
+    return null;
+  }
+
+  return new OAuth2Client(
+    GOOGLE_CLIENT_ID,
+    GOOGLE_CLIENT_SECRET,
+    GOOGLE_CALLBACK_URL
+  );
 }
 
 function sessionCookie(res, user, remember = true) {
-  const expiresIn = remember ? "30d" : (process.env.JWT_EXPIRES_IN || "7d");
+  const expiresIn = remember
+    ? "30d"
+    : (process.env.JWT_EXPIRES_IN || "7d");
+
   const token = jwt.sign(
-    { sub: user.id, type: "session" },
+    {
+      sub: user.id,
+      type: "session"
+    },
     process.env.JWT_SECRET,
-    { expiresIn }
+    {
+      expiresIn
+    }
   );
+
   res.cookie("auth_token", token, {
     httpOnly: true,
     secure: process.env.COOKIE_SECURE === "true",
     sameSite: "lax",
-    maxAge: remember ? 30 * 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000,
+    maxAge: remember
+      ? 30 * 24 * 60 * 60 * 1000
+      : 7 * 24 * 60 * 60 * 1000,
     path: "/"
   });
 }
 
+function accountRedirectUrl(req) {
+  const configured = String(
+    process.env.FRONTEND_URL || ""
+  )
+    .trim()
+    .replace(/\/$/, "");
+
+  if (configured) {
+    return `${configured}/account.html`;
+  }
+
+  return `${req.protocol}://${req.get("host")}/account.html`;
+}
+
 export function googleStart(req, res) {
   const client = googleClient();
+
   if (!client) {
-    return res.status(503).send("تسجيل الدخول عبر Google غير مفعّل بعد.");
+    return res.status(503).send(
+      "تسجيل الدخول عبر Google غير مفعّل بعد."
+    );
   }
 
   const state = randomBytes(32).toString("hex");
+
   res.cookie("google_oauth_state", state, {
     httpOnly: true,
     secure: process.env.COOKIE_SECURE === "true",
@@ -286,17 +408,27 @@ export function googleStart(req, res) {
 
   const url = client.generateAuthUrl({
     access_type: "online",
-    scope: ["openid", "email", "profile"],
+    scope: [
+      "openid",
+      "email",
+      "profile"
+    ],
     state,
     prompt: "select_account"
   });
+
   res.redirect(url);
 }
 
 export async function googleCallback(req, res) {
   const client = googleClient();
   const stateCookie = req.cookies.google_oauth_state;
-  const { code, state, error } = req.query;
+
+  const {
+    code,
+    state,
+    error
+  } = req.query;
 
   res.clearCookie("google_oauth_state", {
     httpOnly: true,
@@ -305,63 +437,137 @@ export async function googleCallback(req, res) {
     path: "/"
   });
 
-  if (!client) return res.redirect("/login.html?error=google_not_configured");
-  if (error) return res.redirect("/login.html?error=google_cancelled");
-  if (!code || !state || !stateCookie || state !== stateCookie) {
-    return res.redirect("/login.html?error=google_state");
+  if (!client) {
+    return res.redirect(
+      "/login.html?error=google_not_configured"
+    );
+  }
+
+  if (error) {
+    return res.redirect(
+      "/login.html?error=google_cancelled"
+    );
+  }
+
+  if (
+    !code ||
+    !state ||
+    !stateCookie ||
+    state !== stateCookie
+  ) {
+    return res.redirect(
+      "/login.html?error=google_state"
+    );
   }
 
   try {
     const { tokens } = await client.getToken(code);
-    if (!tokens.id_token) throw new Error("Google did not return an ID token.");
+
+    if (!tokens.id_token) {
+      throw new Error(
+        "Google did not return an ID token."
+      );
+    }
 
     const ticket = await client.verifyIdToken({
       idToken: tokens.id_token,
       audience: process.env.GOOGLE_CLIENT_ID
     });
+
     const payload = ticket.getPayload();
 
     const googleId = payload?.sub;
     const email = normalizeEmail(payload?.email);
-    const name = String(payload?.name || payload?.given_name || "مستخدم Google").trim().slice(0, 100);
-    const emailVerified = payload?.email_verified === true;
 
-    if (!googleId || !email || !emailVerified) {
-      throw new Error("Google account email could not be verified.");
+    const name = String(
+      payload?.name ||
+      payload?.given_name ||
+      "مستخدم Google"
+    )
+      .trim()
+      .slice(0, 100);
+
+    const emailVerified =
+      payload?.email_verified === true;
+
+    if (
+      !googleId ||
+      !email ||
+      !emailVerified
+    ) {
+      throw new Error(
+        "Google account email could not be verified."
+      );
     }
 
     let result = await query(
-      `SELECT id, name, email, password_hash, provider, provider_id, email_verified, created_at
-       FROM users WHERE LOWER(email)=LOWER($1) LIMIT 1`,
+      `SELECT id, name, email, password_hash, provider,
+              provider_id, email_verified, created_at
+       FROM users
+       WHERE LOWER(email)=LOWER($1)
+       LIMIT 1`,
       [email]
     );
 
     let user;
+
     if (result.rowCount) {
       user = result.rows[0];
+
       await query(
         `UPDATE users
-         SET provider='google', provider_id=$1, email_verified=$2, updated_at=NOW()
+         SET provider='google',
+             provider_id=$1,
+             email_verified=$2,
+             updated_at=NOW()
          WHERE id=$3`,
-        [googleId, emailVerified, user.id]
+        [
+          googleId,
+          emailVerified,
+          user.id
+        ]
       );
+
       user.provider = "google";
       user.provider_id = googleId;
       user.email_verified = emailVerified;
     } else {
       const created = await query(
-        `INSERT INTO users (name,email,password_hash,provider,provider_id,email_verified)
-         VALUES ($1,$2,NULL,'google',$3,$4)
-         RETURNING id,name,email,password_hash,provider,provider_id,email_verified,created_at`,
-        [name, email, googleId, emailVerified]
+        `INSERT INTO users
+          (name, email, password_hash, provider,
+           provider_id, email_verified)
+         VALUES
+          ($1, $2, NULL, 'google', $3, $4)
+         RETURNING
+          id, name, email, password_hash, provider,
+          provider_id, email_verified, created_at`,
+        [
+          name,
+          email,
+          googleId,
+          emailVerified
+        ]
       );
+
       user = created.rows[0];
     }
 
+    // إنشاء جلسة تسجيل الدخول قبل الانتقال إلى صفحة حسابي.
     sessionCookie(res, user, true);
-    return res.redirect("/account.html");
+
+    // بعد نجاح Google ينتقل المستخدم مباشرة إلى صفحة حسابي.
+    return res.redirect(
+      accountRedirectUrl(req)
+    );
+
   } catch (error) {
-    console.error("Google OAuth error:", error);
-    return res.redirect("/login.html?error=google_failed");
+    console.error(
+      "Google OAuth error:",
+      error
+    );
+
+    return res.redirect(
+      "/login.html?error=google_failed"
+    );
   }
-}
+          }
