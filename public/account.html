@@ -32,7 +32,7 @@
   document.getElementById('accountEmail').textContent=d.user.email;
   status.textContent='تم تسجيل الدخول بنجاح.';
   info.style.display='block';
- }catch(e){ status.textContent=e.message||'غير مسجل الدخول'; setTimeout(()=>location.href='/login.html',1000); }
+ }catch(e){ status.textContent=e.message||'غير مسجل الدخول'; setTimeout(()=>location.replace('/login.html'),1000); }
  document.getElementById('logoutButton').onclick=async()=>{
   await fetch('/api/auth/logout',{method:'POST',credentials:'include'});
   location.href='/login.html';

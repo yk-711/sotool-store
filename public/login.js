@@ -68,7 +68,8 @@ loginForm.addEventListener("submit", async event => {
 
     // عدّل المسار حسب موقع الصفحة الرئيسية في مشروعك.
     if (data.user) {
-      window.location.href = data.redirect || "/account.html";
+      // استبدال الصفحة مباشرة بعد نجاح تسجيل الدخول.
+      window.location.replace(data.redirect || "/account.html");
     }
   } catch (error) {
     showMessage("loginMessage", error.message, "error");
@@ -137,11 +138,18 @@ async function forgotPassword() {
 
 document.getElementById("forgotButton").addEventListener("click", forgotPassword);
 
+function startGoogleAuth() {
+  window.location.href = "/api/auth/google";
+}
+
 const googleButton = document.getElementById("googleLoginButton");
 if (googleButton) {
-  googleButton.addEventListener("click", () => {
-    window.location.href = "/api/auth/google";
-  });
+  googleButton.addEventListener("click", startGoogleAuth);
+}
+
+const googleRegisterButton = document.getElementById("googleRegisterButton");
+if (googleRegisterButton) {
+  googleRegisterButton.addEventListener("click", startGoogleAuth);
 }
 
 function showMessage(id, text, type = "") {
